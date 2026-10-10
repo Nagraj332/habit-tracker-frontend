@@ -504,3 +504,8 @@ button, a, select, input { touch-action: manipulation; }
 .sclear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: var(--empty); color: var(--muted); font-size: 1.1rem; line-height: 1; display: grid; place-items: center; }
 .sclear:hover { background: var(--line); color: var(--ink); }
 .searchbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; margin-bottom: 14px; border-radius: 12px; font-weight: 600; background: color-mix(in srgb, var(--brand) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--line)); animation: dropin 0.2s ease; }
+
+/* Phones and tablets: no theme button in the top bar (it is still in the menu) */
+@media (max-width: 1000px) {
+  .topbar .themebtn { display: none; }
+}

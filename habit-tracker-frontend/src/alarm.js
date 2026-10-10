@@ -47,48 +47,6 @@ function startVibration(maxMs) {
   vibeStop = setTimeout(stopVibration, maxMs);
 }
 
-// ----- audio unlock (phones only allow sound after the user has tapped the page) -----
-const SILENT_WAV = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
-let sharedCtx = null;
-let sharedAudio = null;
-let audioUnlocked = false;
-
-function getCtx() {
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return null;
-  if (!sharedCtx || sharedCtx.state === "closed") sharedCtx = new Ctx();
-  return sharedCtx;
-}
-
-/** Call from a user tap: resumes the shared audio context and unlocks the shared <audio> element. */
-export function unlockAudio() {
-  try {
-    const ctx = getCtx();
-    if (ctx) {
-      ctx.resume?.();
-      const s = ctx.createBufferSource();
-      s.buffer = ctx.createBuffer(1, 1, 22050);
-      s.connect(ctx.destination);
-      s.start(0);
-    }
-    if (!audioUnlocked && !current) {
-      if (!sharedAudio) sharedAudio = new Audio();
-      sharedAudio.src = SILENT_WAV;
-      sharedAudio.muted = true;
-      sharedAudio.play()
-        .then(() => { sharedAudio.pause(); sharedAudio.muted = false; audioUnlocked = true; })
-        .catch(() => {});
-    }
-  } catch { /* ignore */ }
-}
-
-/** Call once at app start (main.jsx): unlocks audio on the first tap or key press. */
-export function installAudioUnlock() {
-  ["pointerdown", "touchend", "click", "keydown"].forEach((ev) =>
-    window.addEventListener(ev, unlockAudio, { passive: true })
-  );
-}
-
 let current = null;
 let seq = 0;
 
@@ -112,17 +70,10 @@ export async function startAlarm({ volume = 0.8, maxMs = 60000, onStop, vibrate:
 
   if (tune?.blob) {
     const url = URL.createObjectURL(tune.blob);
-    const audio = sharedAudio || new Audio();
-    audio.muted = false;
-    audio.src = url;
+    const audio = new Audio(url);
     audio.loop = true;
     audio.volume = volume;
-    cleanups.push(() => {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-      URL.revokeObjectURL(url);
-    });
+    cleanups.push(() => { audio.pause(); URL.revokeObjectURL(url); });
     try {
       await audio.play();
     } catch {
@@ -130,13 +81,11 @@ export async function startAlarm({ volume = 0.8, maxMs = 60000, onStop, vibrate:
       return { blocked: true };
     }
   } else {
-    const ctx = getCtx();
-    if (!ctx) {
-      onStop?.();
-      return { blocked: true };
-    }
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
     await ctx.resume().catch(() => {});
     if (ctx.state !== "running") {
+      ctx.close();
       onStop?.();
       return { blocked: true };
     }
@@ -156,7 +105,7 @@ export async function startAlarm({ volume = 0.8, maxMs = 60000, onStop, vibrate:
     const ring = () => { beep(0); beep(0.35); beep(0.7); };
     ring();
     const iv = setInterval(ring, 1600);
-    cleanups.push(() => clearInterval(iv));
+    cleanups.push(() => { clearInterval(iv); ctx.close(); });
   }
 
   if (mine !== seq) { cleanups.forEach((f) => f()); return { blocked: false }; }

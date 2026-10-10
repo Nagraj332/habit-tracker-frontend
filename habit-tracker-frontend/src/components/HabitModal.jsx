@@ -37,13 +37,14 @@ export default function HabitModal({ habit, onSave, onClose }) {
     e.preventDefault();
     if (!name.trim()) return setError("Give your habit a name.");
     if (mode === "dates" && dates.length === 0) return setError("Pick at least one date on the calendar.");
+    if (!reminder) return setError("Set a reminder time for this habit.");
     setBusy(true);
     try {
       await onSave({
         name: name.trim(),
         description: description.trim(),
         color,
-        reminderTime: reminder || null,
+        reminderTime: reminder,
         startDate: mode === "daily" ? start || null : null,
         scheduledDates: mode === "dates" ? dates : [],
       });
@@ -86,8 +87,8 @@ export default function HabitModal({ habit, onSave, onClose }) {
         </div>
 
         <div className="field">
-          <span className="lbl">Daily reminder (optional)</span>
-          <TimePicker value={reminder} onChange={setReminder} clearable label="Reminder time" />
+          <span className="lbl">Daily reminder (required)</span>
+          <TimePicker value={reminder} onChange={(v) => { setReminder(v); setError(""); }} label="Reminder time" />
         </div>
 
         <fieldset>

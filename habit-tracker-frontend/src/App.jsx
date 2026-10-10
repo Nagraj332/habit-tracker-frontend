@@ -179,8 +179,13 @@ function Layout() {
     if (item.type === "habit") notify(`Time for ${item.habit.name}`, item.habit.description || "You haven't done this one yet today.", `habit-${item.habit.id}`, latest.current.settings.vibrateOn);
     if (item.type === "nudge") notify(`${item.habits.length} habit${item.habits.length === 1 ? "" : "s"} still to do today`, item.habits.map((h) => h.name).join(", "), "nudge", latest.current.settings.vibrateOn);
     const maxMs = item.type === "habit" ? 60000 : item.type === "test" ? 15000 : 5000;
-    const r = await startAlarm({ volume: latest.current.settings.volume, maxMs, vibrate: latest.current.settings.vibrateOn });
-    if (r.blocked) setBlocked(true);
+    const s = latest.current.settings;
+    if (s.alarmOn || item.type === "test") {
+      const r = await startAlarm({ volume: s.volume, maxMs, vibrate: s.vibrateOn });
+      if (r.blocked) setBlocked(true);
+    } else if (s.vibrateOn) {
+      vibrate([300, 150, 300, 150, 600]); // silent reminder: vibration only, no sound
+    }
   };
   latest.current = { habits, settings, ringing, fire };
 
@@ -200,14 +205,12 @@ function Layout() {
         const h = habits.find((x) => String(x.id) === id);
         if (h && !h.completedToday) return fire({ type: "habit", habit: h });
       }
-      if (settings.alarmOn) {
-        for (const h of habits) {
-          if (!h.reminderTime || h.completedToday || !isActiveOn(h, day)) continue;
-          const key = `${day}|${h.id}|${h.reminderTime}`;
-          if (due(h.reminderTime) && !fired.current.has(key)) {
-            markFired(fired.current, key);
-            return fire({ type: "habit", habit: h });
-          }
+      for (const h of habits) {
+        if (!h.reminderTime || h.completedToday || !isActiveOn(h, day)) continue;
+        const key = `${day}|${h.id}|${h.reminderTime}`;
+        if (due(h.reminderTime) && !fired.current.has(key)) {
+          markFired(fired.current, key);
+          return fire({ type: "habit", habit: h });
         }
       }
       if (settings.nudgeOn && settings.nudgeTime) {

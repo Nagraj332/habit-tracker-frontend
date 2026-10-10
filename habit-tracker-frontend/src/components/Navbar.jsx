@@ -61,7 +61,7 @@ export default function Navbar({ habits, search, onText, onPick, onSearchAll, on
           <span className="grow" />
           <SearchBox {...sb} variant="desk" inputRef={searchRef} />
           {onInstall && <button className="iconbtn" onClick={onInstall} aria-label="Install app" title="Install app"><Icon name="download" size={18} /></button>}
-          <button className="iconbtn" onClick={onTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} title="Toggle theme">
+          <button className="iconbtn themebtn" onClick={onTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} title="Toggle theme">
             <Icon name={theme === "dark" ? "sun" : "moon"} size={18} />
           </button>
           <button className="btn primary newbtn" onClick={onNew} aria-label="New habit" title="New habit"><Icon name="plus" size={18} /> <span className="newlbl">New habit</span></button>

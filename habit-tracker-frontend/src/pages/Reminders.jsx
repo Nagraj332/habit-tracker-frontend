@@ -55,11 +55,11 @@ export default function Reminders() {
   };
 
   const saveTime = async (h, value) => {
-    if (value === (h.reminderTime || "")) return;
+    if (!value || value === (h.reminderTime || "")) return;
     try {
-      await api.update(h.id, { name: h.name, description: h.description || "", color: h.color, reminderTime: value || null });
+      await api.update(h.id, { name: h.name, description: h.description || "", color: h.color, reminderTime: value });
       await reload();
-      say(value ? `Reminder set for ${value}` : "Reminder removed");
+      say(`Reminder set for ${value}`);
     } catch (e) {
       setError(errMsg(e));
     }
@@ -84,8 +84,8 @@ export default function Reminders() {
 
       <section className="panel">
         <div className="setrow">
-          <div><h2>Alarm for habit reminders</h2><p className="hint">Rings and shows a pop-up at each habit's reminder time.</p></div>
-          <label className="switch"><input type="checkbox" checked={settings.alarmOn} onChange={(e) => set("alarmOn", e.target.checked)} aria-label="Alarm for habit reminders" /><span /></label>
+          <div><h2>Alarm sound</h2><p className="hint">Every habit reminder always shows a pop-up. Turn this off for silent reminders.</p></div>
+          <label className="switch"><input type="checkbox" checked={settings.alarmOn} onChange={(e) => set("alarmOn", e.target.checked)} aria-label="Alarm sound" /><span /></label>
         </div>
 
         <h3 className="subh">Alarm tune</h3>
@@ -132,13 +132,13 @@ export default function Reminders() {
 
       <section className="panel">
         <h2>Habit reminder times</h2>
-        <p className="hint">Set a time for each habit. Leave it empty for no reminder.</p>
+        <p className="hint">Every habit needs a reminder time.</p>
         {habits.length === 0 ? <p className="hint">No habits yet.</p> : (
           <div className="remlist">
             {habits.map((h) => (
               <div className="remrow" key={h.id} style={{ "--c": h.color }}>
                 <span className="dot" /><b>{h.name}</b>
-                <TimePicker value={h.reminderTime || ""} onChange={(v) => saveTime(h, v)} clearable label={`Reminder time for ${h.name}`} />
+                <TimePicker value={h.reminderTime || ""} onChange={(v) => saveTime(h, v)} label={`Reminder time for ${h.name}`} />
               </div>
             ))}
           </div>
