@@ -1,7 +1,39 @@
 import axios from "axios";
 
+const OWNER_KEY = "habit-owner-id";
+let memoryOwner = null; // fallback if localStorage is blocked
+
+/** A random id that identifies this browser. Created once and kept in localStorage. */
+function newId() {
+  const c = window.crypto;
+  if (c?.randomUUID) return c.randomUUID(); // only exists on https / localhost
+  const b = new Uint8Array(16);
+  if (c?.getRandomValues) c.getRandomValues(b);
+  else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+export function getOwnerId() {
+  try {
+    let id = localStorage.getItem(OWNER_KEY);
+    if (!id) {
+      id = newId();
+      localStorage.setItem(OWNER_KEY, id);
+    }
+    return id;
+  } catch {
+    return (memoryOwner ||= newId());
+  }
+}
+
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8080/api`,
+});
+
+// every request carries this browser's owner id, so each browser only sees its own data
+http.interceptors.request.use((config) => {
+  config.headers["X-Owner-Id"] = getOwnerId();
+  return config;
 });
 
 export const api = {
