@@ -57,6 +57,13 @@ export function stopAlarm() {
   stopVibration();
 }
 
+let master = null; // gain node of the ringing alarm, so the volume can change while it rings
+
+/** Changes the volume (0-1) of an alarm that is already ringing. */
+export function setAlarmVolume(v) {
+  if (master) master.gain.value = v;
+}
+
 /** Starts ringing. Resolves { blocked: true } if the browser refused to play sound. */
 export async function startAlarm({ volume = 0.8, maxMs = 60000, onStop, vibrate: shake = false } = {}) {
   stopAlarm();
@@ -68,11 +75,26 @@ export async function startAlarm({ volume = 0.8, maxMs = 60000, onStop, vibrate:
   const tune = await loadTune().catch(() => null);
   if (mine !== seq) return { blocked: false };
 
+  // All sound goes through one gain node. (audio.volume is ignored on iPhones; a gain node works everywhere.)
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new Ctx();
+  await ctx.resume().catch(() => {});
+  if (ctx.state !== "running") {
+    ctx.close();
+    finish();
+    return { blocked: true };
+  }
+  const gain = ctx.createGain();
+  gain.gain.value = volume;
+  gain.connect(ctx.destination);
+  master = gain;
+  cleanups.push(() => { if (master === gain) master = null; ctx.close(); });
+
   if (tune?.blob) {
     const url = URL.createObjectURL(tune.blob);
     const audio = new Audio(url);
     audio.loop = true;
-    audio.volume = volume;
+    ctx.createMediaElementSource(audio).connect(gain);
     cleanups.push(() => { audio.pause(); URL.revokeObjectURL(url); });
     try {
       await audio.play();
@@ -81,14 +103,6 @@ export async function startAlarm({ volume = 0.8, maxMs = 60000, onStop, vibrate:
       return { blocked: true };
     }
   } else {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new Ctx();
-    await ctx.resume().catch(() => {});
-    if (ctx.state !== "running") {
-      ctx.close();
-      onStop?.();
-      return { blocked: true };
-    }
     const beep = (delay) => {
       const t = ctx.currentTime + delay;
       const o = ctx.createOscillator();
@@ -96,16 +110,16 @@ export async function startAlarm({ volume = 0.8, maxMs = 60000, onStop, vibrate:
       o.type = "sine";
       o.frequency.value = 880;
       g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(volume * 0.6, t + 0.02);
+      g.gain.linearRampToValueAtTime(0.6, t + 0.02);
       g.gain.linearRampToValueAtTime(0, t + 0.25);
-      o.connect(g).connect(ctx.destination);
+      o.connect(g).connect(gain);
       o.start(t);
       o.stop(t + 0.3);
     };
     const ring = () => { beep(0); beep(0.35); beep(0.7); };
     ring();
     const iv = setInterval(ring, 1600);
-    cleanups.push(() => { clearInterval(iv); ctx.close(); });
+    cleanups.push(() => clearInterval(iv));
   }
 
   if (mine !== seq) { cleanups.forEach((f) => f()); return { blocked: false }; }

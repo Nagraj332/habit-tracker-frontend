@@ -44,7 +44,7 @@ function Layout() {
   const [toast, setToast] = useState(null);
   const [theme, setTheme] = useState(() => {
     try {
-      return localStorage.getItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      return localStorage.getItem("theme-pref") || "light"; // light unless the user picked dark
     } catch {
       return "light";
     }
@@ -107,7 +107,7 @@ function Layout() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem("theme", theme); } catch { /* ignore */ }
+    try { localStorage.setItem("theme-pref", theme); } catch { /* ignore */ }
   }, [theme]);
 
   useEffect(() => {

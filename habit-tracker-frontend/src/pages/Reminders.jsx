@@ -3,7 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { api, errMsg } from "../api";
 import Icon from "../components/Icon";
 import TimePicker from "../components/TimePicker";
-import { clearTune, loadTune, notify, notifySupported, saveTune, startAlarm, stopAlarm, vibrate, vibrationSupported } from "../alarm";
+import { clearTune, loadTune, notify, notifySupported, saveTune, setAlarmVolume, startAlarm, stopAlarm, vibrate, vibrationSupported } from "../alarm";
 
 export default function Reminders() {
   const { habits, settings, setSettings, reload, testAlarm, say, setError } = useOutletContext();
@@ -109,8 +109,8 @@ export default function Reminders() {
         {vibrationSupported() && <div className="hactions"><button className="btn" onClick={() => vibrate([300, 150, 300, 150, 600])}>Test vibration</button></div>}
 
         <div className="setrow tight">
-          <label className="fieldline">Volume
-            <input type="range" min="0.1" max="1" step="0.05" value={settings.volume} onChange={(e) => set("volume", Number(e.target.value))} />
+          <label className="fieldline">Volume {Math.round(settings.volume * 100)}%
+            <input type="range" min="0.1" max="1" step="0.05" value={settings.volume} onChange={(e) => { const v = Number(e.target.value); set("volume", v); setAlarmVolume(v); }} />
           </label>
           <label className="fieldline">Snooze
             <select value={settings.snooze} onChange={(e) => set("snooze", Number(e.target.value))}>
@@ -118,6 +118,7 @@ export default function Reminders() {
             </select>
           </label>
         </div>
+        <p className="hint">The volume buttons on your phone also change how loud the alarm is.</p>
       </section>
 
       <section className="panel">

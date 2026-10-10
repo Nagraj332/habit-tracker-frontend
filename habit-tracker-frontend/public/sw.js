@@ -1,6 +1,6 @@
 // Service worker: makes the app installable and lets the app shell open offline.
 // API calls (a different origin, port 8080) always go straight to the network.
-const VERSION = "habit-tracker-v3";
+const VERSION = "habit-tracker-v4";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
