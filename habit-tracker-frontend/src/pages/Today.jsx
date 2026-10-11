@@ -13,6 +13,12 @@ export default function Today() {
   const { shown: habits, loading, version, toggle, openNew, search, clearSearch } = useOutletContext();
   const searching = Boolean(search.text.trim());
   const [filter, setFilter] = useState("all");
+  const [slow, setSlow] = useState(false); // the server is taking a while (free hosting wakes up slowly)
+  useEffect(() => {
+    if (!loading) { setSlow(false); return; }
+    const t = setTimeout(() => setSlow(true), 2500);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   const todayKey = fmt(new Date());
   const started = habits.filter((h) => isActiveOn(h, todayKey));
@@ -68,9 +74,15 @@ export default function Today() {
       )}
 
       {loading ? (
-        <div className="list">
-          <div className="skel" /><div className="skel" /><div className="skel" />
-        </div>
+        <>
+          <div className="list">
+            <div className="skel" /><div className="skel" /><div className="skel" />
+          </div>
+          <div className="wakehint" role="status">
+            <button className="btn primary" onClick={openNew}><Icon name="plus" size={18} /> Add habit</button>
+            {slow && <p className="hint">Connecting to the server. The first open can take up to a minute.</p>}
+          </div>
+        </>
       ) : habits.length === 0 && searching ? (
         <div className="empty">
           <p>No habit matches "{search.text.trim()}".</p>

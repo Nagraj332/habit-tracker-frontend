@@ -26,9 +26,9 @@ export function getOwnerId() {
   }
 }
 
-const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8080/api`,
-});
+export const API_BASE = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8080/api`;
+
+const http = axios.create({ baseURL: API_BASE });
 
 // every request carries this browser's owner id, so each browser only sees its own data
 http.interceptors.request.use((config) => {
@@ -49,6 +49,15 @@ export const api = {
   walks: () => http.get("/walks").then((r) => r.data),
   createWalk: (body) => http.post("/walks", body).then((r) => r.data),
   removeWalk: (id) => http.delete(`/walks/${id}`),
+
+  // alarm notifications that work when the app is closed
+  pushKey: () => http.get("/push/key").then((r) => r.data),
+  pushSubscribe: (body) => http.post("/push/subscribe", body),
+  pushUnsubscribe: (endpoint) => http.post("/push/unsubscribe", { endpoint }),
+  pushTest: () => http.post("/push/test").then((r) => r.data),
+  /** Tell the server an alarm was handled in the app: stop it, or ring again after `snoozeMinutes`. */
+  pushAck: (habitId, snoozeMinutes) =>
+    http.post("/push/ack", { habitId, snoozeMinutes: snoozeMinutes || null, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }),
 };
 
 /** Local date -> "yyyy-MM-dd" (avoids the UTC shift of toISOString). */

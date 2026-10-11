@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { api, errMsg } from "../api";
+import { disablePush, enablePush, getPushStatus } from "../push";
 import Icon from "../components/Icon";
 import TimePicker from "../components/TimePicker";
 import { clearTune, loadTune, notify, notifySupported, saveTune, setAlarmVolume, startAlarm, stopAlarm, vibrate, vibrationSupported } from "../alarm";
@@ -11,6 +12,37 @@ export default function Reminders() {
   const [tune, setTune] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [msg, setMsg] = useState("");
+  const [pushStatus, setPushStatus] = useState("checking");
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    getPushStatus().then(setPushStatus).catch(() => setPushStatus("unsupported"));
+  }, []);
+
+  const turnOnAlerts = async () => {
+    setPushBusy(true);
+    const r = await enablePush();
+    setPushBusy(false);
+    setPushStatus(await getPushStatus());
+    if (r.ok) say("Alarm alerts are on");
+    else if (r.reason === "denied") say("Alerts are blocked. Allow notifications in your browser settings.");
+    else say(r.message || "Couldn't turn on alarm alerts");
+  };
+  const turnOffAlerts = async () => {
+    setPushBusy(true);
+    await disablePush();
+    setPushBusy(false);
+    setPushStatus(await getPushStatus());
+    say("Alarm alerts are off");
+  };
+  const sendTestAlert = async () => {
+    try {
+      const r = await api.pushTest();
+      say(r.sent > 0 ? "Test alarm sent. Close the app to see it ring." : "No device is registered yet. Turn alarm alerts on first.");
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  };
 
   useEffect(() => {
     loadTune().then((t) => setTune(t?.name || null)).catch(() => {});
@@ -72,6 +104,23 @@ export default function Reminders() {
       <header className="top"><div><h1>Reminders</h1><p className="sub">Alarms and pop-ups for habits you haven't done yet.</p></div></header>
 
       <section className="panel">
+        <h2>Alarm when the app is closed</h2>
+        <p className="hint">{{
+          checking: "Checking...",
+          on: "On. Your reminders ring on this device even when the app is closed. The alarm repeats every minute until you mark the habit done or stop it.",
+          off: "Off. Turn this on so reminders reach you even when the app is closed.",
+          denied: "Notifications are blocked for this site. Allow them in your browser or phone settings, then come back here.",
+          "needs-install": "On iPhone, first add the app to your Home Screen (Share, then Add to Home Screen) and open it from there.",
+          unsupported: "This browser can't receive alarm alerts. Try Chrome on Android, or install the app.",
+        }[pushStatus]}</p>
+        <div className="hactions">
+          {pushStatus === "off" && <button className="btn primary" onClick={turnOnAlerts} disabled={pushBusy}><Icon name="bell" size={16} /> {pushBusy ? "Turning on..." : "Turn on alarm alerts"}</button>}
+          {pushStatus === "on" && <button className="btn" onClick={sendTestAlert}>Send test alarm</button>}
+          {pushStatus === "on" && <button className="btn danger" onClick={turnOffAlerts} disabled={pushBusy}>Turn off</button>}
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>Pop-up notifications</h2>
         <p className="hint">{permText}</p>
         <div className="hactions">
@@ -79,7 +128,7 @@ export default function Reminders() {
           {perm === "granted" && <button className="btn" onClick={() => notify("Test notification", "This is how a reminder will look.", "test")}>Send test notification</button>}
           <button className="btn" onClick={testAlarm}>Ring test alarm</button>
         </div>
-        <p className="hint">Reminders work while Habit Tracker is open in a browser tab. The tab can be in the background, but not closed.</p>
+        <p className="hint">These pop-ups and the in-app alarm work while Habit Tracker is open. Use alarm alerts above to be reminded when it is closed.</p>
       </section>
 
       <section className="panel">

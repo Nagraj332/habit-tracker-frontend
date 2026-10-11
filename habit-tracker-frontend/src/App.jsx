@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Link, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, errMsg, fmt, isActiveOn } from "./api";
 import { notify, startAlarm, stopAlarm, vibrate } from "./alarm";
+import { readHabitCache, writeHabitCache } from "./cache";
+import { getInstallEvent, runInstall, subscribeInstall } from "./install";
+import { syncPush } from "./push";
 import { celebrate } from "./fx";
 import { fmtKm } from "./format";
 import { useWalk } from "./useWalk";
 import AlarmDialog from "./components/AlarmDialog";
 import Background from "./components/Background";
 import Footer from "./components/Footer";
+import Icon from "./components/Icon";
 import HabitModal from "./components/HabitModal";
+import InstallSheet from "./components/InstallSheet";
+import PushPrompt from "./components/PushPrompt";
+import UpdateBanner from "./components/UpdateBanner";
 import Navbar from "./components/Navbar";
 import { loadSettings, saveSettings } from "./settings";
 import Calendar from "./pages/Calendar";
@@ -36,8 +43,12 @@ const markFired = (set, key) => {
 };
 
 function Layout() {
-  const [habits, setHabits] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // show the habits saved on this device straight away; the server answers in the background
+  const boot = useRef(null);
+  if (boot.current === null) boot.current = readHabitCache() || false;
+  const synced = useRef(false);
+  const [habits, setHabits] = useState(boot.current || []);
+  const [loading, setLoading] = useState(!boot.current);
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0); // bumps after each check-in so views refetch their data
   const [editing, setEditing] = useState(null); // null = closed, {} = new, habit = edit
@@ -78,25 +89,9 @@ function Layout() {
   useEffect(() => {
     if (search.id && !habits.some((h) => h.id === search.id)) setSearch({ text: "", id: null });
   }, [habits]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [installEvt, setInstallEvt] = useState(null);
-
-  // "Install app" prompt (Chrome / Edge / Android)
-  useEffect(() => {
-    const onPrompt = (e) => { e.preventDefault(); setInstallEvt(e); };
-    const onInstalled = () => setInstallEvt(null);
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
-  const install = async () => {
-    if (!installEvt) return;
-    installEvt.prompt();
-    await installEvt.userChoice;
-    setInstallEvt(null);
-  };
+  // "Install app" button (Chrome / Edge / Android); the first-visit sheet uses the same event
+  const installEvt = useSyncExternalStore(subscribeInstall, getInstallEvent);
+  const install = () => runInstall();
 
   const setSettings = (fn) =>
     setSettingsState((prev) => {
@@ -125,6 +120,7 @@ function Layout() {
   const load = useCallback(async () => {
     try {
       setHabits(await api.list());
+      synced.current = true;
       setError("");
     } catch (e) {
       setError(errMsg(e));
@@ -135,6 +131,16 @@ function Layout() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // keep the on-device copy current (only after the server has answered once)
+  useEffect(() => {
+    if (synced.current) writeHabitCache(habits);
+  }, [habits]);
+
+  // make sure the server knows this device for alarm notifications (only if the person already allowed them)
+  useEffect(() => {
+    if (!loading) syncPush();
+  }, [loading]);
 
   const toggle = async (id, date) => {
     try {
@@ -273,7 +279,13 @@ function Layout() {
 
   const closeAlarm = () => { stopAlarm(); setRinging(null); };
   const alarmDone = async () => { const h = ringing.habit; closeAlarm(); await toggle(h.id, fmt(new Date())); };
+  // tell the server too, so it stops (or delays) the closed-app alarm for this habit
+  const alarmDismiss = () => {
+    if (ringing?.type === "habit") api.pushAck(ringing.habit.id).catch(() => {});
+    closeAlarm();
+  };
   const alarmSnooze = () => {
+    api.pushAck(ringing.habit.id, settings.snooze).catch(() => {});
     snoozes.current[ringing.habit.id] = Date.now() + settings.snooze * 60000;
     say(`Snoozed for ${settings.snooze} minutes`);
     closeAlarm();
@@ -300,15 +312,19 @@ function Layout() {
               <button className="link" onClick={load}>Try again</button>
             </div>
           )}
+          <PushPrompt enabled={!loading && habits.length > 0} say={say} />
           <Outlet context={ctx} />
         </main>
         <Footer />
       </div>
+      <button className="fab" onClick={() => setEditing({})} aria-label="Add habit"><Icon name="plus" size={26} /></button>
+      <InstallSheet />
+      <UpdateBanner />
       {editing && <HabitModal habit={editing} onSave={save} onClose={() => setEditing(null)} />}
       {walk.status !== "idle" && pathname !== "/walk" && (
         <Link to="/walk" className="walkpill"><i /> {settings.walkActivity === "RUN" ? "Run" : "Walk"} {fmtKm(walk.distance)} km{walk.status === "paused" ? " (paused)" : ""}</Link>
       )}
-      <AlarmDialog item={ringing} blocked={blocked} snooze={settings.snooze} onDone={alarmDone} onSnooze={alarmSnooze} onDismiss={closeAlarm} onOpenToday={() => { closeAlarm(); nav("/"); }} />
+      <AlarmDialog item={ringing} blocked={blocked} snooze={settings.snooze} onDone={alarmDone} onSnooze={alarmSnooze} onDismiss={alarmDismiss} onOpenToday={() => { closeAlarm(); nav("/"); }} />
       {toast && <div className="toast" key={toast.id} role="status">{toast.msg}</div>}
     </>
   );
