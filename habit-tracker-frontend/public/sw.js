@@ -139,6 +139,8 @@ self.addEventListener("notificationclose", (e) => {
   const d = e.notification.data || {};
   if (d.type !== "habit" || !d.habitId) return;
   e.waitUntil((async () => {
+    // give a repeat alarm a moment to appear: it replaces this notification under the same tag
+    await new Promise((r) => setTimeout(r, 2000));
     const same = await self.registration.getNotifications({ tag: d.tag });
     if (same.length === 0) await callApi("/push/ack", { habitId: d.habitId });
   })());

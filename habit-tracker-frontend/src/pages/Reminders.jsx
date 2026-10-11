@@ -115,7 +115,8 @@ export default function Reminders() {
         {pushStatus === "on" && info && (
           <p className="hint">
             Devices registered: {info.devices}. Server time: {info.serverTime} ({info.timezone}).{" "}
-            {info.lastCheckSeconds == null ? "The server has not run a reminder check yet." : `Last reminder check: ${info.lastCheckSeconds < 90 ? `${info.lastCheckSeconds} seconds` : `${Math.round(info.lastCheckSeconds / 60)} minutes`} ago.`}
+            {info.lastCheckSeconds == null ? "The server has not run a reminder check yet." : `Last reminder check: ${info.lastCheckSeconds < 90 ? `${info.lastCheckSeconds} seconds` : `${Math.round(info.lastCheckSeconds / 60)} minutes`} ago.`}{" "}
+            {info.lastAlarm ? `Last alarm sent at ${info.lastAlarm} (201 means the phone's push service accepted it).` : "No alarm has been sent from the server yet today."}
           </p>
         )}
         {pushStatus === "on" && (
@@ -135,7 +136,6 @@ export default function Reminders() {
         <p className="hint">{permText}</p>
         <div className="hactions">
           {perm === "default" && <button className="btn primary" onClick={ask}><Icon name="bell" size={16} /> Allow notifications</button>}
-          {perm === "granted" && <button className="btn" onClick={() => notify("Test notification", "This is how a reminder will look.", "test")}>Send test notification</button>}
         </div>
         <p className="hint">These pop-ups and the in-app alarm work while Habit Tracker is open. Use alarm alerts above to be reminded when it is closed.</p>
       </section>
