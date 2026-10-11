@@ -7,7 +7,7 @@ import TimePicker from "../components/TimePicker";
 import { clearTune, loadTune, notify, notifySupported, saveTune, setAlarmVolume, startAlarm, stopAlarm, vibrate, vibrationSupported } from "../alarm";
 
 export default function Reminders() {
-  const { habits, settings, setSettings, reload, testAlarm, say, setError } = useOutletContext();
+  const { habits, settings, setSettings, reload, say, setError } = useOutletContext();
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : "unsupported"));
   const [tune, setTune] = useState(null);
   const [playing, setPlaying] = useState(false);
@@ -41,16 +41,6 @@ export default function Reminders() {
     setPushBusy(false);
     setPushStatus(await getPushStatus());
     say("Alarm alerts are off");
-  };
-  const sendTestAlert = async () => {
-    try {
-      const r = await api.pushTest();
-      if (r.sent > 0) say("Test alarm sent. Close the app to see it ring.");
-      else if (r.devices > 0) say("The phone's push service refused the test. Turn alerts off and on again, then retry.");
-      else say("No device is registered yet. Turn alarm alerts on first.");
-    } catch (e) {
-      setError(errMsg(e));
-    }
   };
 
   useEffect(() => {
@@ -136,7 +126,6 @@ export default function Reminders() {
         )}
         <div className="hactions">
           {pushStatus === "off" && <button className="btn primary" onClick={turnOnAlerts} disabled={pushBusy}><Icon name="bell" size={16} /> {pushBusy ? "Turning on..." : "Turn on alarm alerts"}</button>}
-          {pushStatus === "on" && <button className="btn" onClick={sendTestAlert}>Send test alarm</button>}
           {pushStatus === "on" && <button className="btn danger" onClick={turnOffAlerts} disabled={pushBusy}>Turn off</button>}
         </div>
       </section>
@@ -147,7 +136,6 @@ export default function Reminders() {
         <div className="hactions">
           {perm === "default" && <button className="btn primary" onClick={ask}><Icon name="bell" size={16} /> Allow notifications</button>}
           {perm === "granted" && <button className="btn" onClick={() => notify("Test notification", "This is how a reminder will look.", "test")}>Send test notification</button>}
-          <button className="btn" onClick={testAlarm}>Ring test alarm</button>
         </div>
         <p className="hint">These pop-ups and the in-app alarm work while Habit Tracker is open. Use alarm alerts above to be reminded when it is closed.</p>
       </section>
