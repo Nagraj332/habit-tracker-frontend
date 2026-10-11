@@ -182,18 +182,59 @@ function Layout() {
   const fire = async (item) => {
     setRinging(item);
     setBlocked(false);
-    if (item.type === "habit") notify(`Time for ${item.habit.name}`, item.habit.description || "You haven't done this one yet today.", `habit-${item.habit.id}`, latest.current.settings.vibrateOn);
+    if (item.type === "habit" && !item.fromPush) notify(`Time for ${item.habit.name}`, item.habit.description || "You haven't done this one yet today.", `habit-${item.habit.id}`, latest.current.settings.vibrateOn);
     if (item.type === "nudge") notify(`${item.habits.length} habit${item.habits.length === 1 ? "" : "s"} still to do today`, item.habits.map((h) => h.name).join(", "), "nudge", latest.current.settings.vibrateOn);
     const maxMs = item.type === "habit" ? 60000 : item.type === "test" ? 15000 : 5000;
     const s = latest.current.settings;
     if (s.alarmOn || item.type === "test") {
       const r = await startAlarm({ volume: s.volume, maxMs, vibrate: s.vibrateOn });
-      if (r.blocked) setBlocked(true);
+      if (r.blocked && !item.fromPush) setBlocked(true);
     } else if (s.vibrateOn) {
       vibrate([300, 150, 300, 150, 600]); // silent reminder: vibration only, no sound
     }
   };
   latest.current = { habits, settings, ringing, fire };
+
+  // ----- alarm pop-up for an alarm that rang while the app was closed -----
+  // Shown when a notification is tapped, when the service worker says so, or when the app is
+  // opened while the server still has an alarm waiting for you.
+  const showPushAlarm = useCallback((habitId) => {
+    const { habits, ringing, fire } = latest.current;
+    if (ringing) return;
+    const h = habits.find((x) => String(x.id) === String(habitId));
+    if (h && !h.completedToday) fire({ type: "habit", habit: h, fromPush: true });
+  }, []);
+
+  const pendingAlarm = useRef(new URLSearchParams(window.location.search).get("alarm"));
+  useEffect(() => {
+    const id = pendingAlarm.current;
+    if (!id || loading || !habits.some((h) => String(h.id) === id)) return;
+    pendingAlarm.current = null;
+    nav(pathname, { replace: true }); // drop ?alarm= so a refresh doesn't open it again
+    showPushAlarm(id);
+  }, [habits, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (e) => { if (e.data?.type === "alarm") showPushAlarm(e.data.habitId); };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [showPushAlarm]);
+
+  useEffect(() => {
+    if (loading) return;
+    let off = false;
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const ids = await api.pushRinging();
+        if (!off && ids.length) showPushAlarm(ids[0]);
+      } catch { /* the server may be waking up; try again next time the app is shown */ }
+    };
+    check();
+    document.addEventListener("visibilitychange", check);
+    return () => { off = true; document.removeEventListener("visibilitychange", check); };
+  }, [loading, showPushAlarm]);
 
   useEffect(() => {
     const tick = () => {
@@ -317,7 +358,6 @@ function Layout() {
         </main>
         <Footer />
       </div>
-      <button className="fab" onClick={() => setEditing({})} aria-label="Add habit"><Icon name="plus" size={26} /></button>
       <InstallSheet />
       <UpdateBanner />
       {editing && <HabitModal habit={editing} onSave={save} onClose={() => setEditing(null)} />}

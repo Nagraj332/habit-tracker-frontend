@@ -122,9 +122,15 @@ self.addEventListener("notificationclick", (e) => {
       await callApi("/push/ack", { habitId: d.habitId }); // tapping the alarm or "Stop alarm" silences it
       if (e.action === "stop") return;
     }
+    // open the app and show the alarm pop-up (Mark done / Snooze / Dismiss) for this habit
+    const isHabit = d.type === "habit" && d.habitId;
     const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    if (list[0]) return list[0].focus();
-    return self.clients.openWindow("/");
+    if (list[0]) {
+      await list[0].focus();
+      if (isHabit) list[0].postMessage({ type: "alarm", habitId: d.habitId });
+      return;
+    }
+    return self.clients.openWindow(isHabit ? `/?alarm=${d.habitId}` : "/");
   })());
 });
 

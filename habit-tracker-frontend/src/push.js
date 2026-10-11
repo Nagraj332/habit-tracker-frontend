@@ -75,7 +75,10 @@ export async function syncPush() {
   try {
     if (!pushSupported() || Notification.permission !== "granted") return;
     const last = Number(localStorage.getItem("push-synced") || 0);
-    if (Date.now() - last < 6 * 3600 * 1000) { await saveConfig(); return; }
+    const reg = await registration(5000);
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    // still subscribed and synced recently: nothing to do. A lost subscription is re-created at once.
+    if (sub && Date.now() - last < 6 * 3600 * 1000) { await saveConfig(); return; }
     await enablePush();
   } catch { /* ignore */ }
 }

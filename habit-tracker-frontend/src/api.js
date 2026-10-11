@@ -55,6 +55,9 @@ export const api = {
   pushSubscribe: (body) => http.post("/push/subscribe", body),
   pushUnsubscribe: (endpoint) => http.post("/push/unsubscribe", { endpoint }),
   pushTest: () => http.post("/push/test").then((r) => r.data),
+  pushStatus: () => http.get("/push/status", { params: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }).then((r) => r.data),
+  /** Ids of habits whose alarm has rung on the server and is still waiting for you. */
+  pushRinging: () => http.get("/push/ringing", { params: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }).then((r) => r.data),
   /** Tell the server an alarm was handled in the app: stop it, or ring again after `snoozeMinutes`. */
   pushAck: (habitId, snoozeMinutes) =>
     http.post("/push/ack", { habitId, snoozeMinutes: snoozeMinutes || null, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }),

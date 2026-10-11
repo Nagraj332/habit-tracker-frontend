@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { api, errMsg } from "../api";
+import { API_BASE, api, errMsg } from "../api";
 import { disablePush, enablePush, getPushStatus } from "../push";
 import Icon from "../components/Icon";
 import TimePicker from "../components/TimePicker";
@@ -14,10 +14,17 @@ export default function Reminders() {
   const [msg, setMsg] = useState("");
   const [pushStatus, setPushStatus] = useState("checking");
   const [pushBusy, setPushBusy] = useState(false);
+  const [info, setInfo] = useState(null);
 
   useEffect(() => {
     getPushStatus().then(setPushStatus).catch(() => setPushStatus("unsupported"));
   }, []);
+
+  // what the server knows about this device (also wakes a sleeping server)
+  useEffect(() => {
+    if (pushStatus !== "on") return;
+    api.pushStatus().then(setInfo).catch(() => setInfo(null));
+  }, [pushStatus]);
 
   const turnOnAlerts = async () => {
     setPushBusy(true);
@@ -38,7 +45,9 @@ export default function Reminders() {
   const sendTestAlert = async () => {
     try {
       const r = await api.pushTest();
-      say(r.sent > 0 ? "Test alarm sent. Close the app to see it ring." : "No device is registered yet. Turn alarm alerts on first.");
+      if (r.sent > 0) say("Test alarm sent. Close the app to see it ring.");
+      else if (r.devices > 0) say("The phone's push service refused the test. Turn alerts off and on again, then retry.");
+      else say("No device is registered yet. Turn alarm alerts on first.");
     } catch (e) {
       setError(errMsg(e));
     }
@@ -113,6 +122,18 @@ export default function Reminders() {
           "needs-install": "On iPhone, first add the app to your Home Screen (Share, then Add to Home Screen) and open it from there.",
           unsupported: "This browser can't receive alarm alerts. Try Chrome on Android, or install the app.",
         }[pushStatus]}</p>
+        {pushStatus === "on" && info && (
+          <p className="hint">
+            Devices registered: {info.devices}. Server time: {info.serverTime} ({info.timezone}).{" "}
+            {info.lastCheckSeconds == null ? "The server has not run a reminder check yet." : `Last reminder check: ${info.lastCheckSeconds < 90 ? `${info.lastCheckSeconds} seconds` : `${Math.round(info.lastCheckSeconds / 60)} minutes`} ago.`}
+          </p>
+        )}
+        {pushStatus === "on" && (
+          <p className="hint">
+            Free hosting puts the server to sleep after 15 minutes without visits, and a sleeping server cannot send alarms.
+            To keep it awake, set up a free uptime monitor that opens <b>{API_BASE}/health</b> every 5 minutes.
+          </p>
+        )}
         <div className="hactions">
           {pushStatus === "off" && <button className="btn primary" onClick={turnOnAlerts} disabled={pushBusy}><Icon name="bell" size={16} /> {pushBusy ? "Turning on..." : "Turn on alarm alerts"}</button>}
           {pushStatus === "on" && <button className="btn" onClick={sendTestAlert}>Send test alarm</button>}
