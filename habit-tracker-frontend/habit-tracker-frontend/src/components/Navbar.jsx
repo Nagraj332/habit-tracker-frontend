@@ -9,6 +9,7 @@ const LINKS = [
   ["/habits", "Habits", "list"],
   ["/walk", "Walk / Run", "walk"],
   ["/insights", "Insights", "chart"],
+  ["/reminders", "Reminders", "bell"],
 ];
 
 export default function Navbar({ habits, search, onText, onPick, onSearchAll, onClear, onNew, theme, onTheme, onInstall }) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { errMsg, fmt } from "../api";
 import MultiDatePicker from "./MultiDatePicker";
+import TimePicker from "./TimePicker";
 
 const COLORS = ["#4CAF50", "#2196F3", "#9C27B0", "#FF9800", "#E91E63", "#00BCD4", "#795548", "#607D8B"];
 
@@ -8,6 +9,7 @@ export default function HabitModal({ habit, onSave, onClose }) {
   const [name, setName] = useState(habit.name || "");
   const [description, setDescription] = useState(habit.description || "");
   const [color, setColor] = useState(habit.color || COLORS[0]);
+  const [reminder, setReminder] = useState(habit.reminderTime || "");
   const [start, setStart] = useState(habit.startDate || habit.createdDate || fmt(new Date()));
   const [mode, setMode] = useState(habit.scheduledDates?.length ? "dates" : "daily");
   const [dates, setDates] = useState(habit.scheduledDates || []);
@@ -35,12 +37,14 @@ export default function HabitModal({ habit, onSave, onClose }) {
     e.preventDefault();
     if (!name.trim()) return setError("Give your habit a name.");
     if (mode === "dates" && dates.length === 0) return setError("Pick at least one date on the calendar.");
+    if (!reminder) return setError("Set a reminder time for this habit.");
     setBusy(true);
     try {
       await onSave({
         name: name.trim(),
         description: description.trim(),
         color,
+        reminderTime: reminder,
         startDate: mode === "daily" ? start || null : null,
         scheduledDates: mode === "dates" ? dates : [],
       });
@@ -80,6 +84,11 @@ export default function HabitModal({ habit, onSave, onClose }) {
           ) : (
             <MultiDatePicker value={dates} onChange={setDates} />
           )}
+        </div>
+
+        <div className="field">
+          <span className="lbl">Daily reminder (required)</span>
+          <TimePicker value={reminder} onChange={(v) => { setReminder(v); setError(""); }} label="Reminder time" />
         </div>
 
         <fieldset>

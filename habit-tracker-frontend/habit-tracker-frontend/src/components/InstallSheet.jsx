@@ -51,7 +51,7 @@ export default function InstallSheet() {
           <img src="/icons/icon-192.png" alt="" width="52" height="52" />
           <div>
             <h2>Install Habit Tracker</h2>
-            <p className="hint">One tap from your home screen, and updates that arrive on their own.</p>
+            <p className="hint">One tap from your home screen, reminders that work when the app is closed, and updates that arrive on their own.</p>
           </div>
         </div>
 

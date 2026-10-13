@@ -42,6 +42,7 @@ export default function HabitCard({ habit, version, onToggle }) {
         <Link className="info" to={`/habits/${habit.id}`}>
           <h2>{habit.name}</h2>
           {habit.description && <p>{habit.description}</p>}
+          {habit.reminderTime && <span className="rem"><Icon name="bell" size={13} /> {fmt12(habit.reminderTime)}</span>}
         </Link>
 
         <div className={`streak ${habit.currentStreak > 0 ? "hot" : ""}`} title="Current streak">

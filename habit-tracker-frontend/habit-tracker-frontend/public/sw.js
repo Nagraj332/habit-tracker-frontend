@@ -1,4 +1,4 @@
-// Service worker: installable app, offline app shell, update flow and alarm notifications.
+// Service worker: installable app, offline app shell and update flow.
 // "__BUILD_ID__" is replaced with a new value on every build, so each deploy is detected as an update.
 const VERSION = "habit-tracker-__BUILD_ID__";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
@@ -12,7 +12,7 @@ self.addEventListener("message", (e) => {
   if (e.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
-// alarms were removed: forget any push subscription an earlier version made on this device
+// server push was removed: forget any push subscription an earlier version made on this device
 async function dropPush() {
   try {
     const sub = await self.registration.pushManager?.getSubscription();

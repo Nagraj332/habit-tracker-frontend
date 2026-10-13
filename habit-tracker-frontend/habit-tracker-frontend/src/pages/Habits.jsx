@@ -51,6 +51,7 @@ export default function Habits() {
             <article key={h.id} className="hcard" style={{ "--c": h.color }}>
               <Link to={`/habits/${h.id}`} className="hname">{h.name}</Link>
               <p className="hdesc">{h.description || "No description"}</p>
+              {h.reminderTime && <span className="rem"><Icon name="bell" size={13} /> Reminder at {fmt12(h.reminderTime)}</span>}
               {h.scheduledDates?.length > 0 && <span className="rem"><Icon name="calendar" size={13} /> {h.scheduledDates.length} chosen {h.scheduledDates.length === 1 ? "date" : "dates"}</span>}
               <div className="hmeta">
                 <span className={`streak ${h.currentStreak > 0 ? "hot" : ""}`}><Icon name="flame" size={18} /><strong>{h.currentStreak}</strong> day streak</span>
