@@ -31,6 +31,19 @@ async function pending() {
   }
 }
 
+/**
+ * Whether Android lets the app set exact-time alarms. We tell the plugin to ask for exact timing only when this is
+ * true: otherwise the plugin opens Android's "Alarms & reminders" screen on every single schedule call.
+ */
+async function exactAllowed() {
+  try {
+    const r = await LocalNotifications.checkExactNotificationSetting();
+    return (r.exact_alarm ?? r.exactAlarm ?? "granted") === "granted";
+  } catch {
+    return true; // older Android versions have no such setting: exact is always allowed
+  }
+}
+
 async function cancelIds(ids) {
   if (ids.length) await LocalNotifications.cancel({ notifications: ids.map((id) => ({ id })) }).catch(() => {});
 }
@@ -120,6 +133,8 @@ async function plan(habits) {
   if (!granted) return 0;
 
   const now = new Date();
+  // exact timing is what makes a reminder fire on time while the phone is asleep (Doze mode)
+  const exact = await exactAllowed();
 
   // habits done today: take their reminder out of the notification shade
   const doneSlots = new Set(habits.filter((h) => h.completedToday).map((h) => Number(h.id) % 2000));
@@ -147,6 +162,7 @@ async function plan(habits) {
           title: `Time for ${h.name}`,
           body: h.description || "You haven't done this one yet today.",
           schedule: { at, allowWhileIdle: true },
+          isExactNotification: exact,
           channelId: CHANNEL,
           autoCancel: true,
           extra: { habitId: h.id, date: key },
@@ -185,6 +201,7 @@ export async function sendTestNotification() {
         title: "Test notification",
         body: "If you can see this, your habit reminders will reach you.",
         schedule: { at: new Date(Date.now() + 3000), allowWhileIdle: true },
+        isExactNotification: await exactAllowed(),
         channelId: CHANNEL,
         autoCancel: true,
       }],
