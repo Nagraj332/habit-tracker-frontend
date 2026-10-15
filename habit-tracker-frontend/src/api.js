@@ -61,6 +61,16 @@ export const api = {
   /** Tell the server an alarm was handled in the app: stop it, or ring again after `snoozeMinutes`. */
   pushAck: (habitId, snoozeMinutes) =>
     http.post("/push/ack", { habitId, snoozeMinutes: snoozeMinutes || null, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+  // alarm notifications that reach the phone even when the app is closed (browser / installed website app)
+  pushKey: () => http.get("/push/key").then((r) => r.data),
+  pushSubscribe: (body) => http.post("/push/subscribe", body),
+  pushUnsubscribe: (endpoint) => http.post("/push/unsubscribe", { endpoint }),
+  pushStatus: () => http.get("/push/status", { params: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }).then((r) => r.data),
+  /** Ids of habits whose alarm has rung on the server and is still waiting for you. */
+  pushRinging: () => http.get("/push/ringing", { params: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone } }).then((r) => r.data),
+  /** Tell the server an alarm was handled in the app: stop it, or ring again after `snoozeMinutes`. */
+  pushAck: (habitId, snoozeMinutes) =>
+    http.post("/push/ack", { habitId, snoozeMinutes: snoozeMinutes || null, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }),
 };
 
 /** Local date -> "yyyy-MM-dd" (avoids the UTC shift of toISOString). */

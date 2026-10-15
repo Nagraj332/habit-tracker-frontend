@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { api, errMsg } from "../api";
+import { API_BASE, api, errMsg } from "../api";
+import { disablePush, enablePush, getPushStatus } from "../push";
 import { getNativeStatus, isNative, openExactAlarmSettings, requestNativePermission, scheduleAll, scheduleTest } from "../native";
 import Icon from "../components/Icon";
 import TimePicker from "../components/TimePicker";
@@ -13,7 +14,36 @@ export default function Reminders() {
   const [playing, setPlaying] = useState(false);
   const [msg, setMsg] = useState("");
   const native = isNative();
+  const [pushStatus, setPushStatus] = useState("checking");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [info, setInfo] = useState(null);
   const [ns, setNs] = useState(null);
+
+  // browser / installed website app: alarm alerts sent by the server, so they arrive with the app closed
+  useEffect(() => {
+    if (native) return;
+    getPushStatus().then(setPushStatus).catch(() => setPushStatus("unsupported"));
+  }, [native]);
+  useEffect(() => {
+    if (native || pushStatus !== "on") return;
+    api.pushStatus().then(setInfo).catch(() => setInfo(null)); // also wakes a sleeping server
+  }, [native, pushStatus]);
+  const turnOnAlerts = async () => {
+    setPushBusy(true);
+    const r = await enablePush();
+    setPushBusy(false);
+    setPushStatus(await getPushStatus());
+    if (r.ok) say("Alarm alerts are on");
+    else if (r.reason === "denied") say("Alerts are blocked. Allow notifications in your browser settings.");
+    else say(r.message || "Couldn't turn on alarm alerts");
+  };
+  const turnOffAlerts = async () => {
+    setPushBusy(true);
+    await disablePush();
+    setPushBusy(false);
+    setPushStatus(await getPushStatus());
+    say("Alarm alerts are off");
+  };
 
   const refreshNative = async () => setNs(await getNativeStatus());
   useEffect(() => {
@@ -117,7 +147,31 @@ export default function Reminders() {
       ) : (
         <section className="panel">
           <h2>Alarm when the app is closed</h2>
-          <p className="hint">A website can't ring an alarm on a sleeping phone. Install the Habit Tracker Android app for alarms that ring even when the phone is asleep. In the browser, reminders only work while the app is open.</p>
+          <p className="hint">{{
+            checking: "Checking...",
+            on: "On. Your reminders reach this device even when the app is closed, removed from recents, or the phone is locked. The alarm repeats every minute until you open it, mark the habit done, or stop it.",
+            off: "Off. Turn this on so reminders reach you even when the app is closed.",
+            denied: "Notifications are blocked for this site. Allow them in your browser or phone settings, then come back here.",
+            "needs-install": "On iPhone (iOS 16.4 or newer): open this site in Safari, tap Share, then Add to Home Screen. Open the app from the new icon on your Home Screen, then come back here to turn alerts on.",
+            unsupported: "This browser can't receive alarm alerts. Use Chrome on Android, or Safari on iPhone and add the app to your Home Screen.",
+          }[pushStatus]}</p>
+          {pushStatus === "on" && info && (
+            <p className="hint">
+              Devices registered: {info.devices}. Server time: {info.serverTime} ({info.timezone}).{" "}
+              {info.lastCheckSeconds == null ? "The server has not run a reminder check yet." : `Last reminder check: ${info.lastCheckSeconds < 90 ? `${info.lastCheckSeconds} seconds` : `${Math.round(info.lastCheckSeconds / 60)} minutes`} ago.`}{" "}
+              {info.lastAlarm ? `Last alarm sent at ${info.lastAlarm} (201 means the phone's push service accepted it).` : "No alarm has been sent from the server yet today."}
+            </p>
+          )}
+          {pushStatus === "on" && (
+            <p className="hint">
+              Free hosting puts the server to sleep after 15 minutes without visits, and a sleeping server cannot send alarms.
+              To keep it awake, set up a free uptime monitor that opens <b>{API_BASE}/health</b> every 5 minutes.
+            </p>
+          )}
+          <div className="hactions">
+            {pushStatus === "off" && <button className="btn primary" onClick={turnOnAlerts} disabled={pushBusy}><Icon name="bell" size={16} /> {pushBusy ? "Turning on..." : "Turn on alarm alerts"}</button>}
+            {pushStatus === "on" && <button className="btn danger" onClick={turnOffAlerts} disabled={pushBusy}>Turn off</button>}
+          </div>
         </section>
       )}
 

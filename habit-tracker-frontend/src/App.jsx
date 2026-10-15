@@ -4,6 +4,8 @@ import { api, errMsg, fmt, isActiveOn } from "./api";
 import { notify, startAlarm, stopAlarm, vibrate } from "./alarm";
 import { readHabitCache, writeHabitCache } from "./cache";
 import { getInstallEvent, runInstall, subscribeInstall } from "./install";
+import { syncPush } from "./push";
+import PushPrompt from "./components/PushPrompt";
 import { RING_MINUTES, isNative, onNotificationTap, scheduleAll, scheduleSnooze, setupNative, silenceHabitDay } from "./native";
 import { celebrate } from "./fx";
 import { fmtKm } from "./format";
@@ -137,6 +139,11 @@ function Layout() {
     if (synced.current) writeHabitCache(habits);
   }, [habits]);
 
+  // make sure the server knows this device for alarm notifications (browser / installed website app)
+  useEffect(() => {
+    if (!loading && !isNative()) syncPush();
+  }, [loading]);
+
   const toggle = async (id, date) => {
     try {
       const u = await api.toggle(id, date);
@@ -203,13 +210,38 @@ function Layout() {
     if (h && !h.completedToday) fire({ type: "habit", habit: h, fromPush: true });
   }, []);
 
-  const pendingAlarm = useRef(null); // a tap that arrived before the habits were loaded
+  const pendingAlarm = useRef(new URLSearchParams(window.location.search).get("alarm")); // a tap that arrived before the habits were loaded
   useEffect(() => {
     const id = pendingAlarm.current;
     if (!id || loading || !habits.some((h) => String(h.id) === id)) return;
     pendingAlarm.current = null;
+    nav(pathname, { replace: true }); // drop ?alarm= so a refresh doesn't open it again
     showAlarmFor(id);
   }, [habits, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // browser / installed website app: the service worker tells the open app which alarm was tapped,
+  // and an alarm still waiting on the server pops up when the app is opened
+  useEffect(() => {
+    if (isNative() || !("serviceWorker" in navigator)) return;
+    const onMessage = (e) => { if (e.data?.type === "alarm") showAlarmFor(e.data.habitId); };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [showAlarmFor]);
+
+  useEffect(() => {
+    if (loading || isNative()) return;
+    let off = false;
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const ids = await api.pushRinging();
+        if (!off && ids.length) showAlarmFor(ids[0]);
+      } catch { /* the server may be waking up; try again next time the app is shown */ }
+    };
+    check();
+    document.addEventListener("visibilitychange", check);
+    return () => { off = true; document.removeEventListener("visibilitychange", check); };
+  }, [loading, showAlarmFor]);
 
   useEffect(() => {
     if (!isNative()) return;
@@ -331,8 +363,13 @@ function Layout() {
 
   const closeAlarm = () => { stopAlarm(); setRinging(null); };
   const alarmDone = async () => { const h = ringing.habit; closeAlarm(); await toggle(h.id, fmt(new Date())); };
-  const alarmDismiss = () => closeAlarm();
+  // tell the server too, so it stops (or delays) the closed-app alarm for this habit
+  const alarmDismiss = () => {
+    if (!isNative() && ringing?.type === "habit") api.pushAck(ringing.habit.id).catch(() => {});
+    closeAlarm();
+  };
   const alarmSnooze = () => {
+    if (!isNative()) api.pushAck(ringing.habit.id, settings.snooze).catch(() => {});
     scheduleSnooze(ringing.habit, settings.snooze); // Android app: ring again on the phone after the snooze time
     snoozes.current[ringing.habit.id] = Date.now() + settings.snooze * 60000;
     say(`Snoozed for ${settings.snooze} minutes`);
@@ -360,6 +397,7 @@ function Layout() {
               <button className="link" onClick={load}>Try again</button>
             </div>
           )}
+          <PushPrompt enabled={!loading && !isNative() && habits.length > 0} say={say} />
           <Outlet context={ctx} />
         </main>
       </div>
