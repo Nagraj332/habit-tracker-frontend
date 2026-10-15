@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { api, errMsg, getOwnerId, setOwnerId } from "../api";
-import { getNativeStatus, isNative, openExactAlarmSettings, requestNativePermission, scheduleAll } from "../native";
+import { api, errMsg } from "../api";
+import { getNativeStatus, isNative, openExactAlarmSettings, requestNativePermission, scheduleAll, scheduleTest } from "../native";
 import Icon from "../components/Icon";
 import TimePicker from "../components/TimePicker";
 import { clearTune, loadTune, notify, notifySupported, saveTune, setAlarmVolume, startAlarm, stopAlarm, vibrate, vibrationSupported } from "../alarm";
@@ -14,7 +14,6 @@ export default function Reminders() {
   const [msg, setMsg] = useState("");
   const native = isNative();
   const [ns, setNs] = useState(null);
-  const [code, setCode] = useState("");
 
   const refreshNative = async () => setNs(await getNativeStatus());
   useEffect(() => {
@@ -36,14 +35,11 @@ export default function Reminders() {
     say(n ? `${n} alarms planned` : "No alarms to plan yet. Add a habit with a reminder time.");
     refreshNative();
   };
-  const copyCode = async () => {
-    try { await navigator.clipboard.writeText(getOwnerId()); say("Code copied"); } catch { say("Couldn't copy. Select the code and copy it by hand."); }
+  const testInOneMinute = async () => {
+    const problem = await scheduleTest();
+    say(problem ? `Couldn't set the test: ${problem}` : "Test alarm set for 1 minute from now. Lock the phone and remove the app from recents now.");
+    refreshNative();
   };
-  const useCode = () => {
-    if (!setOwnerId(code)) return say("That code isn't valid. Copy it again from the other device.");
-    window.location.reload();
-  };
-
   useEffect(() => {
     loadTune().then((t) => setTune(t?.name || null)).catch(() => {});
     return () => stopAlarm();
@@ -108,14 +104,15 @@ export default function Reminders() {
           <h2>Alarms when the phone sleeps</h2>
           <p className="hint">Your alarms are set on the phone itself, so they go off with the app closed, removed from recents, or the phone asleep. Each alarm rings once a minute for 12 minutes until you open it or mark the habit done.</p>
           <p className="hint">
-            {ns ? <>Notifications: <b>{ns.notifications === "granted" ? "allowed" : "not allowed"}</b>. Exact alarms: <b>{ns.exact === "granted" ? "allowed" : "not allowed"}</b>. Alarms planned: <b>{ns.scheduled}</b>.</> : "Checking..."}
+            {ns ? <>Notifications: <b>{ns.notifications === "granted" ? "allowed" : "not allowed"}</b>. Exact alarms: <b>{ns.exact === "granted" ? "allowed" : "not allowed"}</b>. Alarms planned: <b>{ns.scheduled}</b>.{ns.error ? <> Android refused something: <b>{ns.error}</b></> : null}</> : "Checking..."}
           </p>
           <div className="hactions">
             {ns && ns.notifications !== "granted" && <button className="btn primary" onClick={allowNotifications}><Icon name="bell" size={16} /> Allow notifications</button>}
             {ns && ns.exact !== "granted" && <button className="btn primary" onClick={openExactAlarmSettings}>Allow exact alarms</button>}
             <button className="btn" onClick={replan}>Plan alarms again</button>
+            <button className="btn" onClick={testInOneMinute}>Test: ring in 1 minute</button>
           </div>
-          <p className="hint">So the phone never blocks them: open Settings, Apps, Habit Tracker, Battery, and choose Unrestricted. On Xiaomi, Realme, Oppo, Vivo and similar phones also allow Auto-start for this app. Keep Do Not Disturb off.</p>
+          <p className="hint">If the test doesn't ring with the phone locked and the app removed from recents, your phone is stopping the app. Open Settings, Apps, Habit Tracker, and set Battery to Unrestricted (or Allow background activity). Turn on Auto-start (Auto launch). In the recent apps screen, lock the Habit Tracker card (lock icon or pull it down) so Clear all doesn't stop it. Keep Do Not Disturb and battery saver off.</p>
         </section>
       ) : (
         <section className="panel">
@@ -199,18 +196,6 @@ export default function Reminders() {
             ))}
           </div>
         )}
-      </section>
-
-      <section className="panel">
-        <h2>Link devices</h2>
-        <p className="hint">Your habits belong to a private code on this device. To see the same habits on another device (for example the website and the Android app), copy the code here and paste it into the other device. Anyone who has the code can see your habits, so keep it private.</p>
-        <p className="hint"><b style={{ wordBreak: "break-all" }}>{getOwnerId()}</b></p>
-        <div className="hactions"><button className="btn" onClick={copyCode}>Copy my code</button></div>
-        <label className="field">
-          <span className="lbl">Use the code from another device</span>
-          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Paste the code here" autoComplete="off" />
-        </label>
-        <div className="hactions"><button className="btn primary" onClick={useCode} disabled={!code.trim()}>Use this code</button></div>
       </section>
     </>
   );

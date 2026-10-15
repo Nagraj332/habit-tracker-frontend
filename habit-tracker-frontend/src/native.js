@@ -14,6 +14,11 @@ const REPEAT_DAYS = 2; // days ahead that also get the repeat rings
 const MAX_ALARMS = 450; // Android allows about 500 scheduled alarms per app
 const SNOOZE_DAY = 9000; // ids with a "day" at or above this are snoozes
 const EPOCH = new Date(2026, 0, 1);
+const TEST_ID = 2147000000; // the 1-minute test alarm
+
+// the last thing Android refused, shown on the Reminders page
+let lastError = "";
+const remember = (e) => { lastError = String((e && e.message) || e || "unknown problem").slice(0, 160); };
 
 // A notification id carries the habit, the day and the ring number, so alarms can be found without looking them up.
 const dayIndex = (d) => Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - EPOCH) / 86400000);
@@ -73,7 +78,7 @@ export async function getNativeStatus() {
     const r = await LocalNotifications.checkExactNotificationSetting();
     exact = r.exact_alarm ?? r.exactAlarm ?? "granted";
   } catch { /* older Android versions have no such setting */ }
-  return { notifications, exact, scheduled: (await pending()).length };
+  return { notifications, exact, scheduled: (await pending()).length, error: lastError };
 }
 
 export async function requestNativePermission() {
@@ -100,6 +105,7 @@ export async function scheduleAll(habits) {
   // clear the old plan; snoozes stay unless that habit has been done
   const old = await pending();
   await cancelIds(old.filter((n) => {
+    if (n.id === TEST_ID) return false; // leave the test alarm alone
     const d = decode(n.id);
     return d.day < SNOOZE_DAY || done.has(d.slot);
   }).map((n) => n.id));
@@ -135,7 +141,8 @@ export async function scheduleAll(habits) {
   }
   list.sort((a, b) => a.at - b.at);
   const batch = list.slice(0, MAX_ALARMS).map((x) => x.n);
-  if (batch.length) await LocalNotifications.schedule({ notifications: batch }).catch(() => {});
+  lastError = "";
+  if (batch.length) await LocalNotifications.schedule({ notifications: batch }).catch(remember);
   return batch.length;
 }
 
@@ -186,4 +193,26 @@ export function onNotificationTap(callback) {
     const extra = event?.notification?.extra;
     if (extra?.habitId != null) callback(extra.habitId);
   });
+}
+
+/** Rings once, one minute from now, so you can lock the phone and remove the app to see if alarms get through. Returns a problem text, or "" when set. */
+export async function scheduleTest() {
+  if (!isNative()) return "This only works in the Android app";
+  try {
+    if ((await LocalNotifications.checkPermissions()).display !== "granted") return "Notifications are not allowed for this app";
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: TEST_ID,
+        title: "Test alarm",
+        body: "If you can read this, alarms get through on this phone.",
+        schedule: { at: new Date(Date.now() + 60000), allowWhileIdle: true },
+        channelId: CHANNEL,
+        autoCancel: true,
+      }],
+    });
+    return "";
+  } catch (e) {
+    remember(e);
+    return lastError;
+  }
 }
