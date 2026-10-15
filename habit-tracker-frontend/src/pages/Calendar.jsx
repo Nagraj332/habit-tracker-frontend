@@ -65,8 +65,8 @@ export default function Calendar() {
               <button
                 key={key}
                 className={`cal-day ${d.getMonth() === cursor.getMonth() ? "" : "out"} ${key === todayKey ? "today" : ""} ${multi ? (picked.has(key) ? "picked" : "") : key === sel ? "sel" : ""} ${future ? "future" : ""}`}
-                disabled={multi && past}
-                onClick={() => (multi ? (past ? null : setPicked((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; })) : setSel(key))}
+                disabled={past}
+                onClick={() => { if (past) return; if (multi) setPicked((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; }); else setSel(key); }}
                 aria-label={`${d.toDateString()}, ${list.length} habits`}
                 aria-pressed={multi ? picked.has(key) : key === sel}
               >
