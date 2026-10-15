@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { API_BASE, api, errMsg } from "../api";
-import { disablePush, enablePush, getPushStatus } from "../push";
+import { api, errMsg, getOwnerId, setOwnerId } from "../api";
+import { getNativeStatus, isNative, openExactAlarmSettings, requestNativePermission, scheduleAll } from "../native";
 import Icon from "../components/Icon";
 import TimePicker from "../components/TimePicker";
 import { clearTune, loadTune, notify, notifySupported, saveTune, setAlarmVolume, startAlarm, stopAlarm, vibrate, vibrationSupported } from "../alarm";
@@ -12,35 +12,36 @@ export default function Reminders() {
   const [tune, setTune] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [msg, setMsg] = useState("");
-  const [pushStatus, setPushStatus] = useState("checking");
-  const [pushBusy, setPushBusy] = useState(false);
-  const [info, setInfo] = useState(null);
+  const native = isNative();
+  const [ns, setNs] = useState(null);
+  const [code, setCode] = useState("");
 
+  const refreshNative = async () => setNs(await getNativeStatus());
   useEffect(() => {
-    getPushStatus().then(setPushStatus).catch(() => setPushStatus("unsupported"));
-  }, []);
+    if (!native) return;
+    refreshNative();
+    const onShow = () => { if (document.visibilityState === "visible") refreshNative(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
+  }, [native]);
 
-  // what the server knows about this device (also wakes a sleeping server)
-  useEffect(() => {
-    if (pushStatus !== "on") return;
-    api.pushStatus().then(setInfo).catch(() => setInfo(null));
-  }, [pushStatus]);
-
-  const turnOnAlerts = async () => {
-    setPushBusy(true);
-    const r = await enablePush();
-    setPushBusy(false);
-    setPushStatus(await getPushStatus());
-    if (r.ok) say("Alarm alerts are on");
-    else if (r.reason === "denied") say("Alerts are blocked. Allow notifications in your browser settings.");
-    else say(r.message || "Couldn't turn on alarm alerts");
+  const allowNotifications = async () => {
+    const r = await requestNativePermission();
+    if (r === "granted") await scheduleAll(habits);
+    else say("Notifications are blocked. Allow them in your phone's settings for this app.");
+    refreshNative();
   };
-  const turnOffAlerts = async () => {
-    setPushBusy(true);
-    await disablePush();
-    setPushBusy(false);
-    setPushStatus(await getPushStatus());
-    say("Alarm alerts are off");
+  const replan = async () => {
+    const n = await scheduleAll(habits);
+    say(n ? `${n} alarms planned` : "No alarms to plan yet. Add a habit with a reminder time.");
+    refreshNative();
+  };
+  const copyCode = async () => {
+    try { await navigator.clipboard.writeText(getOwnerId()); say("Code copied"); } catch { say("Couldn't copy. Select the code and copy it by hand."); }
+  };
+  const useCode = () => {
+    if (!setOwnerId(code)) return say("That code isn't valid. Copy it again from the other device.");
+    window.location.reload();
   };
 
   useEffect(() => {
@@ -102,43 +103,37 @@ export default function Reminders() {
     <>
       <header className="top"><div><h1>Reminders</h1><p className="sub">Alarms and pop-ups for habits you haven't done yet.</p></div></header>
 
-      <section className="panel">
-        <h2>Alarm when the app is closed</h2>
-        <p className="hint">{{
-          checking: "Checking...",
-          on: "On. Your reminders ring on this device even when the app is closed. The alarm repeats every minute until you mark the habit done or stop it.",
-          off: "Off. Turn this on so reminders reach you even when the app is closed.",
-          denied: "Notifications are blocked for this site. Allow them in your browser or phone settings, then come back here.",
-          "needs-install": "On iPhone, first add the app to your Home Screen (Share, then Add to Home Screen) and open it from there.",
-          unsupported: "This browser can't receive alarm alerts. Try Chrome on Android, or install the app.",
-        }[pushStatus]}</p>
-        {pushStatus === "on" && info && (
+      {native ? (
+        <section className="panel">
+          <h2>Alarms when the phone sleeps</h2>
+          <p className="hint">Your alarms are set on the phone itself, so they go off with the app closed, removed from recents, or the phone asleep. Each alarm rings once a minute for 12 minutes until you open it or mark the habit done.</p>
           <p className="hint">
-            Devices registered: {info.devices}. Server time: {info.serverTime} ({info.timezone}).{" "}
-            {info.lastCheckSeconds == null ? "The server has not run a reminder check yet." : `Last reminder check: ${info.lastCheckSeconds < 90 ? `${info.lastCheckSeconds} seconds` : `${Math.round(info.lastCheckSeconds / 60)} minutes`} ago.`}{" "}
-            {info.lastAlarm ? `Last alarm sent at ${info.lastAlarm} (201 means the phone's push service accepted it).` : "No alarm has been sent from the server yet today."}
+            {ns ? <>Notifications: <b>{ns.notifications === "granted" ? "allowed" : "not allowed"}</b>. Exact alarms: <b>{ns.exact === "granted" ? "allowed" : "not allowed"}</b>. Alarms planned: <b>{ns.scheduled}</b>.</> : "Checking..."}
           </p>
-        )}
-        {pushStatus === "on" && (
-          <p className="hint">
-            Free hosting puts the server to sleep after 15 minutes without visits, and a sleeping server cannot send alarms.
-            To keep it awake, set up a free uptime monitor that opens <b>{API_BASE}/health</b> every 5 minutes.
-          </p>
-        )}
-        <div className="hactions">
-          {pushStatus === "off" && <button className="btn primary" onClick={turnOnAlerts} disabled={pushBusy}><Icon name="bell" size={16} /> {pushBusy ? "Turning on..." : "Turn on alarm alerts"}</button>}
-          {pushStatus === "on" && <button className="btn danger" onClick={turnOffAlerts} disabled={pushBusy}>Turn off</button>}
-        </div>
-      </section>
+          <div className="hactions">
+            {ns && ns.notifications !== "granted" && <button className="btn primary" onClick={allowNotifications}><Icon name="bell" size={16} /> Allow notifications</button>}
+            {ns && ns.exact !== "granted" && <button className="btn primary" onClick={openExactAlarmSettings}>Allow exact alarms</button>}
+            <button className="btn" onClick={replan}>Plan alarms again</button>
+          </div>
+          <p className="hint">So the phone never blocks them: open Settings, Apps, Habit Tracker, Battery, and choose Unrestricted. On Xiaomi, Realme, Oppo, Vivo and similar phones also allow Auto-start for this app. Keep Do Not Disturb off.</p>
+        </section>
+      ) : (
+        <section className="panel">
+          <h2>Alarm when the app is closed</h2>
+          <p className="hint">A website can't ring an alarm on a sleeping phone. Install the Habit Tracker Android app for alarms that ring even when the phone is asleep. In the browser, reminders only work while the app is open.</p>
+        </section>
+      )}
 
+      {!native && (
       <section className="panel">
         <h2>Pop-up notifications</h2>
         <p className="hint">{permText}</p>
         <div className="hactions">
           {perm === "default" && <button className="btn primary" onClick={ask}><Icon name="bell" size={16} /> Allow notifications</button>}
         </div>
-        <p className="hint">These pop-ups and the in-app alarm work while Habit Tracker is open. Use alarm alerts above to be reminded when it is closed.</p>
+        <p className="hint">These pop-ups and the in-app alarm work while Habit Tracker is open.</p>
       </section>
+      )}
 
       <section className="panel">
         <div className="setrow">
@@ -179,6 +174,7 @@ export default function Reminders() {
         <p className="hint">The volume buttons on your phone also change how loud the alarm is.</p>
       </section>
 
+      {!native && (
       <section className="panel">
         <div className="setrow">
           <div><h2>Daily "still to do" nudge</h2><p className="hint">One pop-up listing every habit that isn't done yet.</p></div>
@@ -188,6 +184,7 @@ export default function Reminders() {
           <TimePicker value={settings.nudgeTime} onChange={(v) => v && set("nudgeTime", v)} disabled={!settings.nudgeOn} label="Nudge time" />
         </div>
       </section>
+      )}
 
       <section className="panel">
         <h2>Habit reminder times</h2>
@@ -202,6 +199,18 @@ export default function Reminders() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="panel">
+        <h2>Link devices</h2>
+        <p className="hint">Your habits belong to a private code on this device. To see the same habits on another device (for example the website and the Android app), copy the code here and paste it into the other device. Anyone who has the code can see your habits, so keep it private.</p>
+        <p className="hint"><b style={{ wordBreak: "break-all" }}>{getOwnerId()}</b></p>
+        <div className="hactions"><button className="btn" onClick={copyCode}>Copy my code</button></div>
+        <label className="field">
+          <span className="lbl">Use the code from another device</span>
+          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Paste the code here" autoComplete="off" />
+        </label>
+        <div className="hactions"><button className="btn primary" onClick={useCode} disabled={!code.trim()}>Use this code</button></div>
       </section>
     </>
   );

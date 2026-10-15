@@ -26,6 +26,19 @@ export function getOwnerId() {
   }
 }
 
+/** Use another device's code so both devices show the same habits. Returns false if the code is not valid. */
+export function setOwnerId(raw) {
+  const id = String(raw || "").trim();
+  if (!/^[A-Za-z0-9-]{16,64}$/.test(id)) return false;
+  try {
+    localStorage.setItem(OWNER_KEY, id);
+    localStorage.removeItem("habit-cache-v1"); // the saved copy belongs to the old code
+  } catch {
+    memoryOwner = id;
+  }
+  return true;
+}
+
 export const API_BASE = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8080/api`;
 
 const http = axios.create({ baseURL: API_BASE });

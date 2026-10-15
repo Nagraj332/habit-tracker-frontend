@@ -14,7 +14,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 );
 
 // PWA: the service worker only runs in the production build (npm run build, then npm run preview)
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
+if ("serviceWorker" in navigator && import.meta.env.PROD && !window.Capacitor?.isNativePlatform?.()) {
   window.addEventListener("load", async () => {
     try {
       const reg = await navigator.serviceWorker.register("/sw.js");

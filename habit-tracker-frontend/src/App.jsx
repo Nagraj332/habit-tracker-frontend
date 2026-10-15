@@ -4,17 +4,15 @@ import { api, errMsg, fmt, isActiveOn } from "./api";
 import { notify, startAlarm, stopAlarm, vibrate } from "./alarm";
 import { readHabitCache, writeHabitCache } from "./cache";
 import { getInstallEvent, runInstall, subscribeInstall } from "./install";
-import { syncPush } from "./push";
+import { RING_MINUTES, isNative, onNotificationTap, scheduleAll, scheduleSnooze, setupNative, silenceHabitDay } from "./native";
 import { celebrate } from "./fx";
 import { fmtKm } from "./format";
 import { useWalk } from "./useWalk";
 import AlarmDialog from "./components/AlarmDialog";
 import Background from "./components/Background";
-import Footer from "./components/Footer";
 import Icon from "./components/Icon";
 import HabitModal from "./components/HabitModal";
 import InstallSheet from "./components/InstallSheet";
-import PushPrompt from "./components/PushPrompt";
 import UpdateBanner from "./components/UpdateBanner";
 import Navbar from "./components/Navbar";
 import { loadSettings, saveSettings } from "./settings";
@@ -47,6 +45,7 @@ function Layout() {
   const boot = useRef(null);
   if (boot.current === null) boot.current = readHabitCache() || false;
   const synced = useRef(false);
+  const loadedDay = useRef(fmt(new Date())); // the day the habit list was last loaded
   const [habits, setHabits] = useState(boot.current || []);
   const [loading, setLoading] = useState(!boot.current);
   const [error, setError] = useState("");
@@ -121,6 +120,7 @@ function Layout() {
     try {
       setHabits(await api.list());
       synced.current = true;
+      loadedDay.current = fmt(new Date());
       setError("");
     } catch (e) {
       setError(errMsg(e));
@@ -136,11 +136,6 @@ function Layout() {
   useEffect(() => {
     if (synced.current) writeHabitCache(habits);
   }, [habits]);
-
-  // make sure the server knows this device for alarm notifications (only if the person already allowed them)
-  useEffect(() => {
-    if (!loading) syncPush();
-  }, [loading]);
 
   const toggle = async (id, date) => {
     try {
@@ -182,6 +177,11 @@ function Layout() {
   const fire = async (item) => {
     setRinging(item);
     setBlocked(false);
+    if (item.type === "habit") {
+      const day = fmt(new Date());
+      markFired(fired.current, `${day}|${item.habit.id}|${item.habit.reminderTime}`);
+      silenceHabitDay(item.habit.id, day); // Android app: you've seen it, so its repeat rings stop
+    }
     if (item.type === "habit" && !item.fromPush) notify(`Time for ${item.habit.name}`, item.habit.description || "You haven't done this one yet today.", `habit-${item.habit.id}`, latest.current.settings.vibrateOn);
     if (item.type === "nudge") notify(`${item.habits.length} habit${item.habits.length === 1 ? "" : "s"} still to do today`, item.habits.map((h) => h.name).join(", "), "nudge", latest.current.settings.vibrateOn);
     const maxMs = item.type === "habit" ? 60000 : item.type === "test" ? 15000 : 5000;
@@ -195,46 +195,50 @@ function Layout() {
   };
   latest.current = { habits, settings, ringing, fire };
 
-  // ----- alarm pop-up for an alarm that rang while the app was closed -----
-  // Shown when a notification is tapped, when the service worker says so, or when the app is
-  // opened while the server still has an alarm waiting for you.
-  const showPushAlarm = useCallback((habitId) => {
+  // ----- Android app: tapping an alarm notification opens its pop-up (Mark done / Snooze / Dismiss) -----
+  const showAlarmFor = useCallback((habitId) => {
     const { habits, ringing, fire } = latest.current;
     if (ringing) return;
     const h = habits.find((x) => String(x.id) === String(habitId));
     if (h && !h.completedToday) fire({ type: "habit", habit: h, fromPush: true });
   }, []);
 
-  const pendingAlarm = useRef(new URLSearchParams(window.location.search).get("alarm"));
+  const pendingAlarm = useRef(null); // a tap that arrived before the habits were loaded
   useEffect(() => {
     const id = pendingAlarm.current;
     if (!id || loading || !habits.some((h) => String(h.id) === id)) return;
     pendingAlarm.current = null;
-    nav(pathname, { replace: true }); // drop ?alarm= so a refresh doesn't open it again
-    showPushAlarm(id);
+    showAlarmFor(id);
   }, [habits, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    const onMessage = (e) => { if (e.data?.type === "alarm") showPushAlarm(e.data.habitId); };
-    navigator.serviceWorker.addEventListener("message", onMessage);
-    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [showPushAlarm]);
+    if (!isNative()) return;
+    setupNative().then(() => scheduleAll(latest.current.habits));
+    let handle = null;
+    let gone = false;
+    onNotificationTap((habitId) => {
+      if (latest.current.habits.some((h) => String(h.id) === String(habitId))) showAlarmFor(habitId);
+      else pendingAlarm.current = String(habitId);
+    }).then((h) => { if (gone) h.remove(); else handle = h; });
+    return () => { gone = true; handle?.remove(); };
+  }, [showAlarmFor]);
 
+  // keep the phone's own alarms in step with the habits (Android app only)
+  const alarmPlan = `${fmt(new Date())};` + habits.map((h) => `${h.id}|${h.reminderTime}|${h.completedToday}|${h.createdDate}|${(h.scheduledDates || []).join(",")}`).join(";");
   useEffect(() => {
-    if (loading) return;
-    let off = false;
-    const check = async () => {
+    if (!isNative() || loading) return;
+    scheduleAll(habits);
+  }, [alarmPlan, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isNative()) return;
+    // when the app comes back to the screen, refresh the habits quietly; a changed list re-plans the alarms
+    const onShow = () => {
       if (document.visibilityState !== "visible") return;
-      try {
-        const ids = await api.pushRinging();
-        if (!off && ids.length) showPushAlarm(ids[0]);
-      } catch { /* the server may be waking up; try again next time the app is shown */ }
+      api.list().then((hs) => { setHabits(hs); synced.current = true; }).catch(() => {});
     };
-    check();
-    document.addEventListener("visibilitychange", check);
-    return () => { off = true; document.removeEventListener("visibilitychange", check); };
-  }, [loading, showPushAlarm]);
+    document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
+  }, []);
 
   useEffect(() => {
     const tick = () => {
@@ -242,9 +246,16 @@ function Layout() {
       if (ringing) return;
       const now = new Date();
       const day = fmt(now);
+      if (day !== loadedDay.current) {
+        // a new day began while the app stayed open: yesterday's check-ins don't count today, so reload the list
+        loadedDay.current = day;
+        setHabits((hs) => hs.map((h) => ({ ...h, completedToday: false })));
+        api.list().then((hs) => { setHabits(hs); synced.current = true; }).catch(() => {});
+        return;
+      }
       const mins = now.getHours() * 60 + now.getMinutes();
       const toMins = (t) => { const [a, b] = t.split(":").map(Number); return a * 60 + b; };
-      const due = (t) => { const d = mins - toMins(t); return d >= 0 && d <= 2; };
+      const due = (t) => { const d = mins - toMins(t); return d >= 0 && d <= (isNative() ? RING_MINUTES - 1 : 2); };
 
       for (const [id, at] of Object.entries(snoozes.current)) {
         if (Date.now() < at) continue;
@@ -320,13 +331,9 @@ function Layout() {
 
   const closeAlarm = () => { stopAlarm(); setRinging(null); };
   const alarmDone = async () => { const h = ringing.habit; closeAlarm(); await toggle(h.id, fmt(new Date())); };
-  // tell the server too, so it stops (or delays) the closed-app alarm for this habit
-  const alarmDismiss = () => {
-    if (ringing?.type === "habit") api.pushAck(ringing.habit.id).catch(() => {});
-    closeAlarm();
-  };
+  const alarmDismiss = () => closeAlarm();
   const alarmSnooze = () => {
-    api.pushAck(ringing.habit.id, settings.snooze).catch(() => {});
+    scheduleSnooze(ringing.habit, settings.snooze); // Android app: ring again on the phone after the snooze time
     snoozes.current[ringing.habit.id] = Date.now() + settings.snooze * 60000;
     say(`Snoozed for ${settings.snooze} minutes`);
     closeAlarm();
@@ -353,10 +360,8 @@ function Layout() {
               <button className="link" onClick={load}>Try again</button>
             </div>
           )}
-          <PushPrompt enabled={!loading && habits.length > 0} say={say} />
           <Outlet context={ctx} />
         </main>
-        <Footer />
       </div>
       <InstallSheet />
       <UpdateBanner />

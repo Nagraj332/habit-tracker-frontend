@@ -21,14 +21,17 @@ export const subscribeInstall = (f) => {
   return () => listeners.delete(f);
 };
 
+const inAndroidApp = () => Boolean(window.Capacitor?.isNativePlatform?.());
+
 export const isStandalone = () =>
-  window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  inAndroidApp() || window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
 
 export const isIOS = () =>
   /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 /** Links opened inside WhatsApp, Instagram and similar apps can't install anything. */
 export const inAppBrowser = () => {
+  if (inAndroidApp()) return false;
   const ua = navigator.userAgent;
   if (/FBAN|FBAV|Instagram|Line\/|Snapchat|; wv\)/i.test(ua)) return true;
   return /iPhone|iPad|iPod/.test(ua) && !/Safari|CriOS|FxiOS|EdgiOS/.test(ua);

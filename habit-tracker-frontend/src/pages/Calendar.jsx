@@ -59,12 +59,14 @@ export default function Calendar() {
             const key = fmt(d);
             const list = habits.filter((h) => isActiveOn(h, key));
             const future = key > todayKey;
+            const past = key < todayKey;
             const done = list.filter((h) => isDone(h, key)).length;
             return (
               <button
                 key={key}
                 className={`cal-day ${d.getMonth() === cursor.getMonth() ? "" : "out"} ${key === todayKey ? "today" : ""} ${multi ? (picked.has(key) ? "picked" : "") : key === sel ? "sel" : ""} ${future ? "future" : ""}`}
-                onClick={() => (multi ? setPicked((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; }) : setSel(key))}
+                disabled={multi && past}
+                onClick={() => (multi ? (past ? null : setPicked((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; })) : setSel(key))}
                 aria-label={`${d.toDateString()}, ${list.length} habits`}
                 aria-pressed={multi ? picked.has(key) : key === sel}
               >
@@ -89,7 +91,7 @@ export default function Calendar() {
             </div>
             <div className="hactions">
               <button className="btn" onClick={() => setPicked(new Set())}>Clear</button>
-              <button className="btn primary" disabled={picked.size === 0} onClick={() => openNew([...picked].sort())}><Icon name="plus" size={16} /> Add habit</button>
+              <button className="btn primary" disabled={picked.size === 0} onClick={() => openNew([...picked].filter((k) => k >= todayKey).sort())}><Icon name="plus" size={16} /> Add habit</button>
             </div>
           </div>
         </section>
@@ -97,8 +99,8 @@ export default function Calendar() {
 
       <section className="panel" key={sel} hidden={multi}>
         <div className="setrow">
-          <div><h2>{selLabel}</h2><p className="hint">{selFuture ? "Planned habits for this day." : "Tap a circle to mark a habit done or not done."}</p></div>
-          <button className="btn primary" onClick={() => openNew(sel)}><Icon name="plus" size={16} /> Add habit</button>
+          <div><h2>{selLabel}</h2><p className="hint">{selFuture ? "Planned habits for this day." : sel < todayKey ? "Tap a circle to mark a habit done or not done. New habits start today or later." : "Tap a circle to mark a habit done or not done."}</p></div>
+          <button className="btn primary" onClick={() => openNew(sel < todayKey ? todayKey : sel)}><Icon name="plus" size={16} /> Add habit</button>
         </div>
         {selHabits.length === 0 ? (
           <p className="hint">No habits on this day yet. Use Add habit to start one here.</p>

@@ -49,6 +49,7 @@ export default function MultiDatePicker({ value, onChange }) {
               key={key}
               className={`mdp-day ${sel.has(key) ? "sel" : ""} ${key === todayKey ? "today" : ""} ${d.getMonth() === cursor.getMonth() ? "" : "out"}`}
               onClick={() => toggle(key)}
+              disabled={key < todayKey && !sel.has(key)}
               aria-pressed={sel.has(key)}
               aria-label={d.toDateString()}
             >

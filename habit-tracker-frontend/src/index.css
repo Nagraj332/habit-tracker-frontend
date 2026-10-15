@@ -575,3 +575,7 @@ button, a, select, input { touch-action: manipulation; }
   .updatebar .btn, .pushprompt .btn { flex: 1; }
 }
 .alarmrow .btn { padding-left: 10px; padding-right: 10px; font-size: 0.95rem; }
+
+/* days before today can't be picked when choosing dates */
+.cal-day:disabled, .mdp-day:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+.cal-day:disabled:hover { transform: none; box-shadow: none; }

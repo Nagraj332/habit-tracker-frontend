@@ -37,6 +37,9 @@ export default function HabitModal({ habit, onSave, onClose }) {
     e.preventDefault();
     if (!name.trim()) return setError("Give your habit a name.");
     if (mode === "dates" && dates.length === 0) return setError("Pick at least one date on the calendar.");
+    const today = fmt(new Date());
+    if (!habit.id && mode === "daily" && start && start < today) return setError("A new habit can't start on a past day. Choose today or a later date.");
+    if (!habit.id && mode === "dates" && dates.some((d) => d < today)) return setError("Choose today or later dates. Past days can't be picked.");
     if (!reminder) return setError("Set a reminder time for this habit.");
     setBusy(true);
     try {
@@ -78,7 +81,7 @@ export default function HabitModal({ habit, onSave, onClose }) {
           {mode === "daily" ? (
             <label className="inner">
               Starts on
-              <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+              <input type="date" value={start} min={habit.id ? undefined : fmt(new Date())} onChange={(e) => setStart(e.target.value)} />
               <small className="muted">Pick a future date to plan a habit ahead.</small>
             </label>
           ) : (
